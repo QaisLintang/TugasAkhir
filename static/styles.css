@@ -1,0 +1,28 @@
+body {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.user-box {
+    width: 420px; /* Adjust the width as needed */
+    margin: 0 10px 10px; /* Adjust the margin for space between containers */
+    box-sizing: border-box;
+    float: left;
+    background-color: #c9c9c9; /* Background color for better visibility */
+    padding: 10px; /* Add padding for content spacing */
+}
+
+.user-box.good {
+    border: 10px solid #00c20a;
+}
+
+.user-box.warn {
+    border: 10px solid #ff0000;
+}
+
+.clearfix::after {
+    content: "";
+    clear: both;
+    display: table;
+}
