@@ -16,7 +16,7 @@ conn = mysql.connector.connect(**db_config)
 cursor = conn.cursor()
 
 # Example query
-cursor.execute("SELECT * FROM mdl_sessions")
+cursor.execute("select mdl_user.id, mdl_user.username,mdl_sessions.userid, mdl_sessions.sid,mdl_sessions.firstip, mdl_sessions.lastip, FROM_UNIXTIME(mdl_sessions.timecreated) , FROM_UNIXTIME(mdl_sessions.timemodified) from mdl_user inner join mdl_sessions on mdl_user.id=mdl_sessions.userid;")
 rows = cursor.fetchall()
 
 for row in rows:
