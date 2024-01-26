@@ -9,11 +9,14 @@
     <title>Usernames and IP Addresses</title>
 </head>
 <body>
-    <h1>Usernames and Current IP Addresses</h1>
-    {% for nama_peserta, informasi in user_data.items() %}
+    <h1>Moodle users Information</h1>
+    {% for userid, informasi in user_data.items() %}
         <div class="user-box {% if informasi.status == 'good' %} good {% else %} warn {% endif %}">
-            <strong>Username:</strong> {{ nama_peserta }}<br>
-            <strong>Current IP Address:</strong> {{ informasi.IP_address }}<br>
+            <strong>Username:</strong> {{ informasi.username }}<br>
+            <strong>First IP:</strong> {{ informasi.first_IP }}<br>
+            <strong>Last IP:</strong> {{ informasi.last_IP }}<br>
+            <strong>Time created:</strong> {{ informasi.timecreated }}<br>
+            <strong>Time modified:</strong> {{ informasi.timemodified }}<br>
             <strong>Status:</strong> {{ informasi.status }}
         </div>
     {% endfor %}
