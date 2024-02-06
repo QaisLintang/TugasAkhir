@@ -69,7 +69,7 @@ def main_menu():
     print("Pick user by num in list:")
     for sid, peserta in data.items():
         sid_data.append(sid)
-        print("sid " + i + " : " + peserta.sid + " ," + peserta.last_IP + " ," + peserta.unix_timecreated)
+        print("sid " + str(i) + " : " + str(peserta.sid) + " ," + str(peserta.last_IP) + " ," + str(peserta.unix_timecreated))
     
     input = int(input("pick user num: "))
 
