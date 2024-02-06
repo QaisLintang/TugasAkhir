@@ -76,7 +76,7 @@ def main_menu():
 
     ip,unix_time = data[sid_data[input - 1].last_IP], data[sid_data[input - 1].unix_timecreated]
 
-    command = f"cat /var/log/rsync-apache2/access.log | grep -E '{ip}.*{unix_time}'"
+    command = [f"cat /var/log/rsync-apache2/access.log | grep -E '{ip}.*{unix_time}'"]
 
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
