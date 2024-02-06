@@ -9,9 +9,8 @@ db_config = {
 }
 
 class peserta:
-    def __init__(self, state, userId, sid, timecreated, timemodified, first_IP, last_IP, unix_timecreated):
+    def __init__(self, state, sid, timecreated, timemodified, first_IP, last_IP, unix_timecreated):
         self.state = state
-        self.userId = userId
         self.sid = sid
         self.timecreated = timecreated
         self.timemodified = timemodified
