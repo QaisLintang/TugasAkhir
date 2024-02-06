@@ -71,9 +71,9 @@ def main_menu():
         sid_data.append(sid)
         print("sid " + str(i) + " : " + str(peserta.sid) + " ," + str(peserta.last_IP) + " ," + str(peserta.unix_timecreated))
     
-    input = int(input("pick user num: "))
+    user_input = int(input("pick user num: "))
 
-    ip,unix_time = data[sid_data[input - 1].last_IP], data[sid_data[input - 1].unix_timecreated]
+    ip,unix_time = data[sid_data[user_input - 1].last_IP], data[sid_data[user_input - 1].unix_timecreated]
 
     command = ["cat", "/var/log/rsync-apache2/access.log", "|", "grep", "-E", f"{ip}.*{unix_time}"]
 
