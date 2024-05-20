@@ -3,7 +3,7 @@
 from flask import Flask, render_template
 import time
 import mysql.connector
-import datetime as datetime
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import urllib.parse
@@ -66,7 +66,7 @@ def get_data(formatted_date, shift):
     encoded_shift = urllib.parse.quote(current_shift)
 
     url = f"https://sandbox.telkomuniversity.ac.id/laclog/lac-eprt-log/Quiz%20Attempts/{encoded_time}/{encoded_shift}/"
-    command = f'wget --user=serverlog --password=S3rverl0g! -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
+    command = f'!wget --user=serverlog --password=S3rverl0g! -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
 
     subprocess.run(command, shell=True)
 
