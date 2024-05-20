@@ -11,13 +11,14 @@
 <body>
     <h1>Moodle users Information</h1>
     {% for userid, informasi in user_data.items() %}
-        <div class="user-box {% if informasi.status == 'good' %} good {% else %} warn {% endif %}">
-            <strong>Username:</strong> {{ informasi.username }}<br>
-            <strong>First IP:</strong> {{ informasi.first_IP }}<br>
-            <strong>Last IP:</strong> {{ informasi.last_IP }}<br>
-            <strong>Time created:</strong> {{ informasi.timecreated }}<br>
-            <strong>Time modified:</strong> {{ informasi.timemodified }}<br>
-            <strong>Status:</strong> {{ informasi.status }}
+        <div class="user-box">
+            <strong>first name:</strong> {{ informasi.firstname }}<br>
+            <strong>last name:</strong> {{ informasi.lastname }}<br>
+            <strong>user id:</strong> {{ informasi.userid }}<br>
+            <strong>Time start:</strong> {{ informasi.timestart }}<br>
+            <strong>Time finish:</strong> {{ informasi.timefinish }}<br>
+            <strong>score:</strong> {{ informasi.score }}<br>
+            <strong>status:</strong> {{ informasi.status }}
         </div>
     {% endfor %}
 </body>

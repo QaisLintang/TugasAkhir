@@ -80,7 +80,7 @@ def main_menu():
                                                                                                                                                                      
     try:                                                                                                                                                             
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)                                                     
-        print(result.stdout.decode('utf-8'))                                                                                                                         
+        print(result.stdout.decode('utf-8'))                                                                                                                        
         print("\n\n")                                                                                                                                                
     except subprocess.CalledProcessError as e:                                                                                                                       
         print("Error :", e.stderr.decode("utf-8"))                                                                                                                   
