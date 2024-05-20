@@ -11,6 +11,10 @@ import subprocess
 import pytz
 import glob
 from sklearn.ensemble import IsolationForest
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+import os
 
 app = Flask(__name__)
 
@@ -22,8 +26,9 @@ class peserta:
     self.firstname = firstname
     self.lastname = lastname
     self.userid = userid
-    self.timestart = timestart
-    self.timefinish = timefinish
+    self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
+    self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
+    self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
     self.score = score
     self.status = 1
 
@@ -56,6 +61,13 @@ def get_time_shift():
     return formatted_date, shift
 
 def get_data(formatted_date, shift):
+    download_dir = 'downloaded_files'
+    username = 'serverlog'
+    password = 'S3rverl0g!'
+
+    # Create the download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
+
     # time = formatted_date
     # current_shift = shift
     time = '01 April 2024'
@@ -68,20 +80,21 @@ def get_data(formatted_date, shift):
     url = f"https://sandbox.telkomuniversity.ac.id/laclog/lac-eprt-log/Quiz%20Attempts/{encoded_time}/{encoded_shift}/"
     command = f'!wget --user=serverlog --password=S3rverl0g! -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
 
-    subprocess.run(command, shell=True)
+    delete_files_in_directory(download_dir)
+    download_folder_with_auth(url, download_dir, username, password)
 
 def create_dataframe(current_shift):
-    data_dir = f'/content/01 April 2024/{current_shift}/*'
+    data_dir = 'downloaded_files'
     list_file = glob.glob(data_dir)
 
     if len(list_file) == 1:
-        data = f'/content/01 April 2024/{current_shift}/Listening.xlsx'
+        data = 'downloaded_files/Listening.xlsx'
         session = 'listening'
     elif len(list_file) == 2:
-        data = f'/content/01 April 2024/{current_shift}/Grammar.xlsx'
+        data = 'downloaded_files/Grammar.xlsx'
         session = 'grammar'
     elif len(list_file) == 3:
-        data = f'/content/01 April 2024/{current_shift}/Reading.xlsx'
+        data = 'downloaded_files/Reading.xlsx'
         session = 'reading'
 
     df_data = pd.read_excel(data, header=0)
@@ -89,11 +102,20 @@ def create_dataframe(current_shift):
     return session, df_data
 
 def getPeserta(df_data):
-  for index, row in df_data.iterrows():
-    # Check if the userid is already in daftar_peserta
-    if not any(p.userid == row['id'] for p in daftar_peserta):
-        newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timefinish'], row['score'])
-        daftar_peserta.append(newPeserta)
+    for index, row in df_data.iterrows():
+        # Check if the userid is already in daftar_peserta
+        if not any(p.userid == row['id'] for p in daftar_peserta):
+            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timefinish'], row['score'])
+            daftar_peserta.append(newPeserta)
+
+    # Convert 'timestart' and 'timefinish' to datetime if needed
+    df_data['timestart'] = pd.to_datetime(df_data['timestart'])
+    df_data['timefinish'] = pd.to_datetime(df_data['timefinish'])
+
+    # Calculate time difference and convert to minutes
+    df_data['diff_time'] = df_data['timefinish'] - df_data['timestart']
+    df_data['diff_time_minute'] = df_data['diff_time'].dt.total_seconds() / 60
+
 
 def add_value(row):
     if row['quiz_name'] == "Grammar":
@@ -163,6 +185,47 @@ def add_pred_value(df_data):
     for p in daftar_peserta:
         if p.userid == row['id']:
             p.status = row['anomaly_score_iso']
+
+
+def delete_files_in_directory(directory):
+    # Get the list of files in the directory
+    files = os.listdir(directory)
+    for file_name in files:
+        file_path = os.path.join(directory, file_name)
+        try:
+            os.remove(file_path)  # Delete the file
+            print(f'Deleted: {file_path}')
+        except Exception as e:
+            print(f'Failed to delete: {file_path}, Error: {e}')
+
+def download_folder_with_auth(url, download_dir, username, password):
+    # Authenticate using basic auth
+    auth = requests.auth.HTTPBasicAuth(username, password)
+
+    # Get the contents of the folder (list of files)
+    response = requests.get(url, auth=auth)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'html.parser')
+        links = soup.find_all('a', href=True)
+        for link in links:
+            file_name = link['href']
+            if file_name.endswith('.xlsx'):  # Filter only Excel files, adjust as needed
+                file_url = urljoin(url, file_name)
+                file_path = os.path.join(download_dir, file_name)
+                download_file(file_url, file_path, auth=auth)
+        print('Folder downloaded successfully.')
+    else:
+        print(f'Failed to download folder. Status code: {response.status_code}')
+
+def download_file(file_url, file_path, auth=None):
+    # Download the file
+    response = requests.get(file_url, auth=auth)
+    if response.status_code == 200:
+        with open(file_path, 'wb') as file:
+            file.write(response.content)
+        print(f'Downloaded: {file_path}')
+    else:
+        print(f'Failed to download file: {file_url}')
 
 # Route to display usernames and IP addresses
 @app.route('/')

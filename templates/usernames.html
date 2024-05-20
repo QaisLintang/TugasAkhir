@@ -10,15 +10,16 @@
 </head>
 <body>
     <h1>Moodle users Information</h1>
-    {% for userid, informasi in user_data.items() %}
-        <div class="user-box">
-            <strong>first name:</strong> {{ informasi.firstname }}<br>
-            <strong>last name:</strong> {{ informasi.lastname }}<br>
-            <strong>user id:</strong> {{ informasi.userid }}<br>
-            <strong>Time start:</strong> {{ informasi.timestart }}<br>
-            <strong>Time finish:</strong> {{ informasi.timefinish }}<br>
+    {% for informasi in user_data %}
+        <div class="user-box {% if informasi.status == 1 %} good {% else %} warn {% endif %}">
+            <strong>firstname:</strong> {{ informasi.firstname }}<br>
+            <strong>lastname:</strong> {{ informasi.lastname }}<br>
+            <strong>userid:</strong> {{ informasi.userid }}<br>
+            <strong>time start:</strong> {{ informasi.timestart }}<br>
+            <strong>time finish:</strong> {{ informasi.timefinish }}<br>
+            <strong>time taken:</strong> {{ informasi.timetaken }}<br>
             <strong>score:</strong> {{ informasi.score }}<br>
-            <strong>status:</strong> {{ informasi.status }}
+            <strong>Status:</strong> {{ informasi.status }}
         </div>
     {% endfor %}
 </body>
