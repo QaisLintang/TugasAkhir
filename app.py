@@ -1,13 +1,9 @@
 # app.py (Flask program)
 
-from flask import Flask, render_template
-import time
-import mysql.connector
+from flask import Flask, render_template, jsonify
 from datetime import datetime
-import numpy as np
 import pandas as pd
 import urllib.parse
-import subprocess
 import pytz
 import glob
 from sklearn.ensemble import IsolationForest
@@ -15,11 +11,15 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import os
+import threading
+import time
+from queue import Queue
 
 app = Flask(__name__)
 
 model = 'models\iso_forest.joblib'
 daftar_peserta = []
+output_queue = Queue()
 
 class peserta:
   def __init__(self, firstname, lastname, userid, timestart, timefinish, score):
@@ -83,7 +83,7 @@ def get_data(formatted_date, shift):
     delete_files_in_directory(download_dir)
     download_folder_with_auth(url, download_dir, username, password)
 
-def create_dataframe(current_shift):
+def create_dataframe():
     data_dir = 'downloaded_files'
     list_file = glob.glob(data_dir)
 
@@ -227,18 +227,42 @@ def download_file(file_url, file_path, auth=None):
     else:
         print(f'Failed to download file: {file_url}')
 
+def download_data_loop():
+    while True:
+        waktu, shift = get_time_shift()
+        get_data(waktu, shift)
+        time.sleep(10)
+
+def start_background_task():
+    task_thread = threading.Thread(target=download_data_loop)
+    task_thread.daemon = True  # This makes sure the thread will exit when the main program exits
+    task_thread.start()
+
 # Route to display usernames and IP addresses
 @app.route('/')
 def show_usernames():
-    time, shift = get_time_shift()
-    get_data(time, shift)
-    session, df_data = create_dataframe(shift)
+    waktu, shift = get_time_shift()
+    get_data(waktu, shift)
+    session, df_data = create_dataframe()
     getPeserta(df_data)
     predict(df_data, session)
     add_pred_value(df_data)
 
     return render_template('usernames.html', user_data=daftar_peserta)
 
+@app.route('/get_data')
+def download_data_log():
+    download_data_loop()
+
+@app.route('/api/daftar_peserta', methods=['GET'])
+def post_peserta():
+    session, df_data = create_dataframe()
+    getPeserta(df_data)
+    predict(df_data, session)
+    add_pred_value(df_data)
+
+    return jsonify(daftar_peserta)
 
 if __name__ == '__main__':
+    start_background_task()
     app.run(debug=True)
