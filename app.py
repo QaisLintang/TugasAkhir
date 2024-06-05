@@ -21,11 +21,38 @@ model = 'models\iso_forest.joblib'
 daftar_peserta = []
 output_queue = Queue()
 
+data_summary = [
+    {
+        'total_case'   : 0,
+        'total_label_0': 0,
+        'total_label_1': 0,
+        'total_user'   : 0,
+        'total_case_monthly': [
+            {
+                'januari'  : 0,
+                'februari' : 0,
+                'maret'    : 0,
+                'april'    : 0,
+                'mei'      : 0,
+                'juni'     : 0,
+                'juli'     : 0,
+                'agustus'  : 0,
+                'september': 0,
+                'oktober'  : 0,
+                'november' : 0,
+                'desember' : 0
+            }
+        ]    
+    }
+]
+
+
 class peserta:
-  def __init__(self, firstname, lastname, userid, timestart, timefinish, score):
+  def __init__(self, firstname, lastname, userid,timedateUser, timestart, timefinish, score):
     self.firstname = firstname
     self.lastname = lastname
     self.userid = userid
+    self.timedateUser = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta'))
     self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
@@ -105,7 +132,7 @@ def getPeserta(df_data):
     for index, row in df_data.iterrows():
         # Check if the userid is already in daftar_peserta
         if not any(p.userid == row['id'] for p in daftar_peserta):
-            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timefinish'], row['score'])
+            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timestart'], row['timefinish'], row['score'])
             daftar_peserta.append(newPeserta)
 
     # Convert 'timestart' and 'timefinish' to datetime if needed
@@ -187,6 +214,70 @@ def add_pred_value(df_data):
             p.status = row['anomaly_score_iso']
 
 
+def getCaseCounts(daftar_peserta):
+    cases, cheat, good = 0, 0, 0
+
+    for p in daftar_peserta:
+        if p.status == -1:
+            cases += 1
+            cheat += 1
+        else:
+            good += 1
+
+    return cases, cheat, good
+
+def getMonthlyCases(daftar_peserta):
+    month_names_id = [
+        "Januari", "Februari", "Maret", "April",
+        "Mei", "Juni", "Juli", "Agustus",
+        "September", "Oktober", "November", "Desember"
+    ]
+
+    for p in daftar_peserta:
+        if p.status == -1:
+            data_summary[0]['total_case_monthly'][0][month_names_id[p.timedateUser.month - 1].lower()] += 1
+
+    # for p in daftar_peserta:
+    #     if p.status == -1:
+    #         if p.timedateUser.month == 1:
+    #             data_summary[0]['total_case_monthly'][0]['januari'] += 1
+    #         elif p.timedateUser.month == 2:
+    #             data_summary[0]['total_case_monthly'][0]['februari'] += 1
+    #         elif p.timedateUser.month == 3:
+    #             data_summary[0]['total_case_monthly'][0]['maret'] += 1
+    #         elif p.timedateUser.month == 4:
+    #             data_summary[0]['total_case_monthly'][0]['april'] += 1
+    #         elif p.timedateUser.month == 5:
+    #             data_summary[0]['total_case_monthly'][0]['mei'] += 1
+    #         elif p.timedateUser.month == 6:
+    #             data_summary[0]['total_case_monthly'][0]['juni'] += 1
+    #         elif p.timedateUser.month == 7:
+    #             data_summary[0]['total_case_monthly'][0]['juli'] += 1
+    #         elif p.timedateUser.month == 8:
+    #             data_summary[0]['total_case_monthly'][0]['agustus'] += 1
+    #         elif p.timedateUser.month == 9:
+    #             data_summary[0]['total_case_monthly'][0]['september'] += 1
+    #         elif p.timedateUser.month == 10:
+    #             data_summary[0]['total_case_monthly'][0]['oktober'] += 1
+    #         elif p.timedateUser.month == 11:
+    #             data_summary[0]['total_case_monthly'][0]['november'] += 1
+    #         elif p.timedateUser.month == 12:
+    #             data_summary[0]['total_case_monthly'][0]['desember'] += 1
+
+def createSummary():
+    cases, cheat, good = getCaseCounts(daftar_peserta)
+
+    # actual data: cheat = -1, good =1
+    # this function input: 0 = 1 (good), 1 = -1 (cheat)
+
+    data_summary[0]['total_case'] = cases
+    data_summary[0]['total_label_0'] = good
+    data_summary[0]['total_label_1'] = cheat
+    data_summary[0]['total_user'] = len(daftar_peserta)
+
+    getMonthlyCases(daftar_peserta)
+
+
 def delete_files_in_directory(directory):
     # Get the list of files in the directory
     files = os.listdir(directory)
@@ -254,14 +345,43 @@ def show_usernames():
 def download_data_log():
     download_data_loop()
 
-@app.route('/api/daftar_peserta', methods=['GET'])
+@app.route('/api/daftar_peserta')
 def post_peserta():
     session, df_data = create_dataframe()
     getPeserta(df_data)
     predict(df_data, session)
     add_pred_value(df_data)
 
-    return jsonify(daftar_peserta)
+    list_data = []
+    for p in daftar_peserta:
+        data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timedateUser ,'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 'score' : p.score, 'status' : p.status}
+        list_data.append(data)
+
+    createSummary()
+
+    return jsonify([list_data, data_summary])
+    # output list, indeks [0] = list_data, indeks [1] = data_summary
+    # 1 json data
+
+
+# @app.route('/detail_peserta') TBA
+# def show_detail_peserta():
+     
+#     return jsonify(datas)
+
+# Route to user peserta
+# @app.route('/clients')
+# def show_peserta():
+#     waktu, shift = get_time_shift()
+#     get_data(waktu, shift)
+#     session, df_data = create_dataframe()
+#     getPeserta(df_data)
+#     predict(df_data, session)
+#     add_pred_value(df_data)
+#     datas = {
+#         peserta: getPeserta
+#     }   
+#     return jsonify(datas)
 
 if __name__ == '__main__':
     start_background_task()
