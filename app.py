@@ -48,7 +48,7 @@ data_summary = [
     }
 ]
 
-
+# objek peserta
 class peserta:
   def __init__(self, firstname, lastname, userid,timedateUser, timestart, timefinish, score, session):
     self.firstname = firstname

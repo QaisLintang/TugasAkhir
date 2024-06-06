@@ -6,3 +6,4 @@ bs4
 CORS
 scikit-learn
 numpy
+flask_cors
