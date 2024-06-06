@@ -14,10 +14,10 @@ import os
 import threading
 import time
 from queue import Queue
-# from flask_cors import CORS
+from flask_cors import CORS
 
 app = Flask(__name__)
-# CORS(app)
+CORS(app)
 
 model = 'models\iso_forest.joblib'
 daftar_peserta = []
