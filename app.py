@@ -14,8 +14,10 @@ import os
 import threading
 import time
 from queue import Queue
+# from flask_cors import CORS
 
 app = Flask(__name__)
+# CORS(app)
 
 model = 'models\iso_forest.joblib'
 daftar_peserta = []
@@ -48,7 +50,7 @@ data_summary = [
 
 
 class peserta:
-  def __init__(self, firstname, lastname, userid,timedateUser, timestart, timefinish, score):
+  def __init__(self, firstname, lastname, userid,timedateUser, timestart, timefinish, score, session):
     self.firstname = firstname
     self.lastname = lastname
     self.userid = userid
@@ -58,6 +60,8 @@ class peserta:
     self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
     self.score = score
     self.status = 1
+    self.session = session
+    self.track_progress = "secure"
 
 def get_time_shift():
     # Define Indonesian month names
@@ -128,11 +132,11 @@ def create_dataframe():
 
     return session, df_data
 
-def getPeserta(df_data):
+def getPeserta(df_data, session):
     for index, row in df_data.iterrows():
         # Check if the userid is already in daftar_peserta
         if not any(p.userid == row['id'] for p in daftar_peserta):
-            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timestart'], row['timefinish'], row['score'])
+            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timestart'], row['timefinish'], row['score'], session)
             daftar_peserta.append(newPeserta)
 
     # Convert 'timestart' and 'timefinish' to datetime if needed
@@ -207,18 +211,26 @@ def predict(df_data, session):
     iso_forest_grammar = IsolationForest(contamination=0.1)
     df_data['anomaly_score_iso'] = iso_forest_grammar.fit_predict(features)
 
-def add_pred_value(df_data):
+def add_pred_value(df_data, session):
    for index, row in df_data.iterrows():
     for p in daftar_peserta:
         if p.userid == row['id']:
             p.status = row['anomaly_score_iso']
+            if p.status == -1:
+                if session == 'listening' or session == 'reading':
+                    nilai_max = 50
+                elif session == 'grammar':
+                    nilai_max = 40
+                converted_nilai = (p.score / nilai_max) * 100
+                if converted_nilai < 40:
+                    p.status = 1
 
 
 def getCaseCounts(daftar_peserta):
     cases, cheat, good = 0, 0, 0
 
     for p in daftar_peserta:
-        if p.status == -1:
+        if p.status == "terindikasi":
             cases += 1
             cheat += 1
         else:
@@ -234,7 +246,7 @@ def getMonthlyCases(daftar_peserta):
     ]
 
     for p in daftar_peserta:
-        if p.status == -1:
+        if p.status == "terindikasi":
             data_summary[0]['total_case_monthly'][0][month_names_id[p.timedateUser.month - 1].lower()] += 1
 
     # for p in daftar_peserta:
@@ -276,6 +288,14 @@ def createSummary():
     data_summary[0]['total_user'] = len(daftar_peserta)
 
     getMonthlyCases(daftar_peserta)
+
+def renameStatusAndTrack(daftar_peserta):
+    for p in daftar_peserta:
+        if p.status == 1:
+            p.status = "aman"
+        else:
+            p.status = "terindikasi"
+            p.track_progress = "open"
 
 
 def delete_files_in_directory(directory):
@@ -335,9 +355,9 @@ def show_usernames():
     waktu, shift = get_time_shift()
     get_data(waktu, shift)
     session, df_data = create_dataframe()
-    getPeserta(df_data)
+    getPeserta(df_data, session)
     predict(df_data, session)
-    add_pred_value(df_data)
+    add_pred_value(df_data, session)
 
     return render_template('usernames.html', user_data=daftar_peserta)
 
@@ -345,24 +365,29 @@ def show_usernames():
 def download_data_log():
     download_data_loop()
 
-@app.route('/api/daftar_peserta')
+@app.route('/api/daftar_peserta', methods=['GET'])
 def post_peserta():
     session, df_data = create_dataframe()
-    getPeserta(df_data)
+    getPeserta(df_data, session)
     predict(df_data, session)
-    add_pred_value(df_data)
+    add_pred_value(df_data, session)
+
+    renameStatusAndTrack(daftar_peserta)
+    createSummary()
 
     list_data = []
     for p in daftar_peserta:
-        data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timedateUser ,'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 'score' : p.score, 'status' : p.status}
+        data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timedateUser ,
+                'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
+                'score' : p.score, 'status' : p.status, 'session': p.session, 'track_progress': p.track_progress}
         list_data.append(data)
 
-    createSummary()
+    return jsonify(list_data)
 
-    return jsonify([list_data, data_summary])
-    # output list, indeks [0] = list_data, indeks [1] = data_summary
-    # 1 json data
+@app.route('/get_summary', methods=['GET'])
+def getSummary():
 
+    return jsonify(data_summary)
 
 # @app.route('/detail_peserta') TBA
 # def show_detail_peserta():
