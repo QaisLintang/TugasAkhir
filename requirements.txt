@@ -1,2 +1,8 @@
 flask                                                                                                                                                                
 mysql.connector 
+pandas
+openpyxl
+be4
+CORS
+scikit-learn
+numpy
