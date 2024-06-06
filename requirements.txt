@@ -2,7 +2,7 @@ flask
 mysql.connector 
 pandas
 openpyxl
-be4
+bs4
 CORS
 scikit-learn
 numpy
