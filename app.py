@@ -23,10 +23,10 @@ app = Flask(__name__)
 CORS(app)
 
 db_config = {
-    'host': 'localhost',
-    'user': 'moodle',
-    'password': 'Moodle@123',
-    'database': 'moodle',
+    'host': '180.250.135.11',
+    'user': 'vm-b',
+    'password': 'admin@123',
+    'database': 'log_analyzer_db',
 }
 
 model = 'models\iso_forest.joblib'
