@@ -9,30 +9,26 @@ python3 app.py
 ```
 
 # Routes
+to access main display
 ```bash
 /
 ```
-to access main display
-
+to download data from sandbox to local computer
 ```bash
 /get_data
 ```
-to download data from sandbox to local computer
-
+to fetch json data of peserta in the current shift
 ```bash
 /api/daftar_peserta
 ```
-to fetch json data of peserta in the current shift
-
+to fetch json data of monthly summary
 ```bash
 /get_summary
 ```
-to fetch json data of monthly summary
-
+to fetch json data of archived cases from database (local)
 ```bash
 /api/get_cases
 ```
-to fetch json data of archived cases from database (local)
 
 # Database
 Create local database for testing
