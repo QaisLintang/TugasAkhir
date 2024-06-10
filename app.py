@@ -15,9 +15,19 @@ import threading
 import time
 from queue import Queue
 from flask_cors import CORS
+import mysql.connector
+from mysql.connector import Error
+import json
 
 app = Flask(__name__)
 CORS(app)
+
+db_config = {
+    'host': 'localhost',
+    'user': 'moodle',
+    'password': 'Moodle@123',
+    'database': 'moodle',
+}
 
 model = 'models\iso_forest.joblib'
 daftar_peserta = []
@@ -49,11 +59,11 @@ data_summary = [
 ]
 
 class peserta:
-  def __init__(self, firstname, lastname, userid,timedateUser, timestart, timefinish, score, session):
+  def __init__(self, firstname, lastname, userid, timedateUser, timestart, timefinish, score, session, shift):
     self.firstname = firstname
     self.lastname = lastname
     self.userid = userid
-    self.timedateUser = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta'))
+    self.timedateUser = datetime.fromtimestamp(timedateUser, pytz.timezone('Asia/Jakarta'))
     self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
@@ -61,6 +71,7 @@ class peserta:
     self.status = 1
     self.session = session
     self.track_progress = "secure"
+    self.shift = shift
 
 def get_time_shift():
     # Define Indonesian month names
@@ -90,6 +101,22 @@ def get_time_shift():
     
     return formatted_date, shift
 
+def get_shift(time):
+    timezone = pytz.timezone('Asia/Jakarta')
+    time = datetime.fromtimestamp(time)
+    formatted_time = time.astimezone(timezone)
+
+    if 7 <= formatted_time.hour <= 9:
+        shift = "Shift 1"
+    elif 10 <= formatted_time.hour <= 12:
+        shift = "Shift 2"
+    elif 13 <= formatted_time.hour <= 16:
+        shift = "Shift 3"
+    else:
+        shift = "Shift 4"
+
+    return shift
+
 def get_data(formatted_date, shift):
     download_dir = 'downloaded_files'
     username = 'serverlog'
@@ -101,7 +128,7 @@ def get_data(formatted_date, shift):
     # time = formatted_date
     # current_shift = shift
     time = '01 April 2024'
-    current_shift = 'Shift 1'
+    current_shift = 'Shift 3'
 
     # Assuming 'time' and 'current_shift' are already defined
     encoded_time = urllib.parse.quote(time)
@@ -132,10 +159,12 @@ def create_dataframe():
     return session, df_data
 
 def getPeserta(df_data, session):
+
     for index, row in df_data.iterrows():
         # Check if the userid is already in daftar_peserta
         if not any(p.userid == row['id'] for p in daftar_peserta):
-            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timestart'], row['timefinish'], row['score'], session)
+            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], row['timestart'], 
+                                 row['timefinish'], row['score'], session, get_shift(row['timestart']))
             daftar_peserta.append(newPeserta)
 
     # Convert 'timestart' and 'timefinish' to datetime if needed
@@ -296,6 +325,65 @@ def renameStatusAndTrack(daftar_peserta):
             p.status = "terindikasi"
             p.track_progress = "open"
 
+def insertCasesToSQL(list_curang):
+
+    data_json_response = jsonify(list_curang)
+    data_json = data_json_response.get_json()
+    data_json_str = json.dumps(data_json)
+    
+    try:
+        connection = mysql.connector.connect(**db_config)
+    
+        if connection.is_connected():
+            cursor = connection.cursor()
+            insert_query = """INSERT INTO case_history (Cases) VALUES (%s)"""
+            cursor.execute(insert_query, (data_json_str,))
+            connection.commit()
+            print("Record inserted successfully into your_table")
+
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+    
+def fetchCasesfromSQL():
+    try:
+        connection = mysql.connector.connect(**db_config)
+    
+        if connection.is_connected():
+            cursor = connection.cursor()
+            query = "SELECT Cases FROM case_history"
+
+            cursor = connection.cursor()
+            cursor.execute(query)
+
+            rows = cursor.fetchall()
+
+            temp_json = []
+            json_data_list = []
+
+            for row in rows:
+                json_data = row[0]
+                temp_json.append(json.loads(json_data))
+
+            for datas in temp_json:
+                json_data_list.extend(datas)
+
+            return json_data_list
+
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+
+def clearPeserta(daftar_peserta):
+    daftar_peserta.clear()
 
 def delete_files_in_directory(directory):
     # Get the list of files in the directory
@@ -304,7 +392,7 @@ def delete_files_in_directory(directory):
         file_path = os.path.join(directory, file_name)
         try:
             os.remove(file_path)  # Delete the file
-            print(f'Deleted: {file_path}')
+            # print(f'Deleted: {file_path}')
         except Exception as e:
             print(f'Failed to delete: {file_path}, Error: {e}')
 
@@ -323,7 +411,7 @@ def download_folder_with_auth(url, download_dir, username, password):
                 file_url = urljoin(url, file_name)
                 file_path = os.path.join(download_dir, file_name)
                 download_file(file_url, file_path, auth=auth)
-        print('Folder downloaded successfully.')
+        # print('Folder downloaded successfully.')
     else:
         print(f'Failed to download folder. Status code: {response.status_code}')
 
@@ -333,7 +421,7 @@ def download_file(file_url, file_path, auth=None):
     if response.status_code == 200:
         with open(file_path, 'wb') as file:
             file.write(response.content)
-        print(f'Downloaded: {file_path}')
+        # print(f'Downloaded: {file_path}')
     else:
         print(f'Failed to download file: {file_url}')
 
@@ -351,6 +439,7 @@ def start_background_task():
 # Route to display usernames and IP addresses
 @app.route('/')
 def show_usernames():
+    clearPeserta(daftar_peserta)
     waktu, shift = get_time_shift()
     get_data(waktu, shift)
     session, df_data = create_dataframe()
@@ -366,6 +455,7 @@ def download_data_log():
 
 @app.route('/api/daftar_peserta', methods=['GET'])
 def post_peserta():
+    clearPeserta(daftar_peserta)
     session, df_data = create_dataframe()
     getPeserta(df_data, session)
     predict(df_data, session)
@@ -375,18 +465,30 @@ def post_peserta():
     createSummary()
 
     list_data = []
+    list_curang = []
     for p in daftar_peserta:
         data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timedateUser ,
                 'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
-                'score' : p.score, 'status' : p.status, 'session': p.session, 'track_progress': p.track_progress}
+                'score' : p.score, 'status' : p.status, 'session': p.session, 'track_progress': p.track_progress,
+                'shift' : p.shift}
+        if p.status == "terindikasi":
+            list_curang.append(data)
         list_data.append(data)
 
+    insertCasesToSQL(list_curang)
+    
     return jsonify(list_data)
 
 @app.route('/get_summary', methods=['GET'])
 def getSummary():
 
     return jsonify(data_summary)
+
+@app.route('/api/get_cases', methods=['GET'])
+def getCases():
+    data_cases = fetchCasesfromSQL()
+
+    return jsonify(data_cases)
 
 # @app.route('/detail_peserta') TBA
 # def show_detail_peserta():
