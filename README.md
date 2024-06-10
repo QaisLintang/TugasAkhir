@@ -33,9 +33,5 @@ to fetch json data of archived cases from database (local)
 # Database
 Create local database for testing
 ```SQL
-CREATE TABLE `moodle`.`case_history` (`cases` JSON NOT NULL ) ENGINE = InnoDB;
-```
-Add this after creating table to prevents duplicates
-```SQL
-ALTER TABLE `case_history` ADD UNIQUE(`cases`);
+CREATE TABLE `log_analyzer_db`.`case_history` (`cases` JSON NOT NULL ) ENGINE = InnoDB;
 ```
