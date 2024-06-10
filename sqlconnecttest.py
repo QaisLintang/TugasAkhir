@@ -3,7 +3,7 @@ import mysql.connector
 # Replace these values with your actual database credentials
 db_config = {
     'host': '180.250.135.11',
-    'user': 'root',
+    'user': 'vm-b',
     'password': 'admin@123',
     'database': 'moodle',
 }
