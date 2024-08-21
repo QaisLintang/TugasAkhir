@@ -165,6 +165,34 @@ async def hapusproktor(update: Update, context: CallbackContext) -> None:
             connection.close()
             print("MySQL connection is closed")
 
+def getproctorforresult():
+    try:
+        connection = mysql.connector.connect(**db_config)
+    
+        if connection.is_connected():
+            cursor = connection.cursor()
+            query = "SELECT chat_id FROM daftar_proktor"
+
+            cursor = connection.cursor()
+            cursor.execute(query)
+
+            rows = cursor.fetchall()
+
+            list_proctor_terdaftar = []
+
+            for row in rows:
+                list_proctor_terdaftar.append(row[0])
+            
+        return list_proctor_terdaftar
+
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+
 # def run_bot():
 #     # Create a new event loop for this thread
 #     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -610,10 +638,22 @@ def show_usernames():
     add_pred_value(df_data, session)
     renameStatusAndTrack(daftar_peserta)
 
-    message = "The main route was accessed!"  # Customize your message here
+    list_curang = []
+    message_list =[]
+    for p in daftar_peserta:
+        if p.status == "terindikasi":
+            list_curang.append(p)
+    
+    for individu in list_curang:
+        temp_list = [individu.firstname, individu.lastname]
+        message_list.append(temp_list)
+
+    message_footer = "\n\nPeserta berikut terindikasi melakukan kecurangan!"
+    message_daftar_curang = '\n'.join([' '.join(sublist) for sublist in message_list])
+    message = message_daftar_curang + message_footer
     
     # Run the asynchronous function
-    asyncio.run(send_message_to_all(proctor_id, message))
+    asyncio.run(send_message_to_all(getproctorforresult(), message))
 
     return render_template('usernames_test.html', user_data=daftar_peserta)
 
