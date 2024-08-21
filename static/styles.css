@@ -21,6 +21,10 @@ body {
     border: 10px solid #ff0000;
 }
 
+.user-box.sample {
+    border: 10px solid #969696;
+}
+
 .clearfix::after {
     content: "";
     clear: both;

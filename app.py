@@ -23,10 +23,10 @@ app = Flask(__name__)
 CORS(app)
 
 db_config = {
-    'host': '180.250.135.11',
-    'user': 'vm-b',
-    'password': 'admin@123',
-    'database': 'log_analyzer_db',
+    'host': 'localhost',
+    'user': 'root',
+    'password': '',
+    'database': 'moodle',
 }
 
 model = 'models\iso_forest.joblib'
@@ -128,7 +128,7 @@ def get_data(formatted_date, shift):
     # time = formatted_date
     # current_shift = shift
     time = '01 April 2024'
-    current_shift = 'Shift 3'
+    current_shift = 'Shift 1'
 
     # Assuming 'time' and 'current_shift' are already defined
     encoded_time = urllib.parse.quote(time)
@@ -144,15 +144,18 @@ def create_dataframe():
     data_dir = 'downloaded_files'
     list_file = glob.glob(data_dir)
 
-    if len(list_file) == 1:
-        data = 'downloaded_files/Listening.xlsx'
-        session = 'listening'
-    elif len(list_file) == 2:
-        data = 'downloaded_files/Grammar.xlsx'
-        session = 'grammar'
-    elif len(list_file) == 3:
-        data = 'downloaded_files/Reading.xlsx'
-        session = 'reading'
+    # if len(list_file) == 1:
+    #     data = 'downloaded_files/Listening.xlsx'
+    #     session = 'listening'
+    # elif len(list_file) == 2:
+    #     data = 'downloaded_files/Grammar.xlsx'
+    #     session = 'grammar'
+    # elif len(list_file) == 3:
+    #     data = 'downloaded_files/Reading.xlsx'
+    #     session = 'reading'
+
+    data = 'downloaded_files/Grammar.xlsx'
+    session = 'grammar'
 
     df_data = pd.read_excel(data, header=0)
 
@@ -490,10 +493,38 @@ def getCases():
 
     return jsonify(data_cases)
 
-# @app.route('/detail_peserta') TBA
-# def show_detail_peserta():
-     
-#     return jsonify(datas)
+@app.route('/detail_peserta', methods=['GET']) 
+def show_detail_peserta():
+    clearPeserta(daftar_peserta)
+    session, df_data = create_dataframe()
+    getPeserta(df_data, session)
+    predict(df_data, session)
+    add_pred_value(df_data, session)
+
+    for p in daftar_peserta:
+        p.firstname = "user"
+        if p.status == 1:
+            p.status = "honest"
+            p.lastname = "type_1"
+        else:
+            p.status = "possible cheating"
+            p.lastname = "type_2"
+
+    list_data = []
+    for p in daftar_peserta:
+        if p.status == 'aman':
+            data = {'userid' : p.userid, 'firstname': 'user', 'lastname': 'type_1',
+                    'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
+                    'score' : p.score, 'status' : 'honest', 'session': p.session}
+        else:
+            data = {'userid' : p.userid, 'firstname': 'user', 'lastname': 'type_2',
+                    'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
+                    'score' : p.score, 'status' : 'possible cheating', 'session': p.session}
+        list_data.append(data)
+
+    return render_template('usernames_test.html', user_data=daftar_peserta)
+    
+    return jsonify(list_data)
 
 # Route to user peserta
 # @app.route('/clients')
