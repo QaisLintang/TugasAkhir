@@ -25,11 +25,18 @@ import asyncio
 app = Flask(__name__)
 CORS(app)
 
+# db_config = {
+#     'host': 'localhost',
+#     'user': 'root',
+#     'password': '',
+#     'database': 'moodle',
+# }
+
 db_config = {
     'host': 'localhost',
-    'user': 'root',
-    'password': '',
-    'database': 'moodle',
+    'user': 'vm-b',
+    'password': 'admin@123',
+    'database': 'log_analyzer_db',
 }
 
 model = 'models\iso_forest.joblib'
@@ -767,6 +774,16 @@ if __name__ == '__main__':
 
     # Run the bot's polling in the main thread
     application.run_polling()
+
+    # Replace with your actual URL
+    # webhook_url = "https://180.250.135.11:5000/6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI"
+
+    # application.run_webhook(
+    #     listen="0.0.0.0",
+    #     port=8443,
+    #     url_path="6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI",
+    #     webhook_url=webhook_url,
+    # )
 
     # Wait for the Flask thread to complete (this will not actually happen in normal execution)
     flask_thread.join()

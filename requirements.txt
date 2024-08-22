@@ -8,3 +8,4 @@ scikit-learn
 numpy
 flask_cors
 python-telegram-bot
+python-telegram-bot[webhook]
