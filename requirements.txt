@@ -7,3 +7,4 @@ CORS
 scikit-learn
 numpy
 flask_cors
+python-telegram-bot
