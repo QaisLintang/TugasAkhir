@@ -25,19 +25,19 @@ import asyncio
 app = Flask(__name__)
 CORS(app)
 
-# db_config = {
-#     'host': 'localhost',
-#     'user': 'root',
-#     'password': '',
-#     'database': 'moodle',
-# }
-
 db_config = {
     'host': 'localhost',
-    'user': 'vm-b',
-    'password': 'admin@123',
-    'database': 'log_analyzer_db',
+    'user': 'root',
+    'password': '',
+    'database': 'moodle',
 }
+
+# db_config = {
+#     'host': 'localhost',
+#     'user': 'vm-b',
+#     'password': 'admin@123',
+#     'database': 'log_analyzer_db',
+# }
 
 model = 'models\iso_forest.joblib'
 daftar_peserta = []
@@ -174,6 +174,7 @@ async def hapusproktor(update: Update, context: CallbackContext) -> None:
 
 def getproctorforresult():
     try:
+        connection = None
         connection = mysql.connector.connect(**db_config)
     
         if connection.is_connected():
@@ -593,7 +594,7 @@ def start_background_task():
     task_thread.start()
 
 def run_flask():
-    app.run(port=5000, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=8443, debug=True, use_reloader=False)
 
 # Route to display usernames and IP addresses
 @app.route('/')
@@ -773,17 +774,17 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot's polling in the main thread
-    application.run_polling()
+    # application.run_polling()
 
     # Replace with your actual URL
-    # webhook_url = "https://180.250.135.11:5000/6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI"
+    webhook_url = "https://180.250.135.11:8443/6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI"
 
-    # application.run_webhook(
-    #     listen="0.0.0.0",
-    #     port=8443,
-    #     url_path="6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI",
-    #     webhook_url=webhook_url,
-    # )
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=8443,
+        url_path="6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI",
+        webhook_url=webhook_url,
+    )
 
     # Wait for the Flask thread to complete (this will not actually happen in normal execution)
     flask_thread.join()
