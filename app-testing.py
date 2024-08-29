@@ -1,6 +1,6 @@
 # app.py (Flask program)
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from datetime import datetime
 import pandas as pd
 import urllib.parse
@@ -21,15 +21,25 @@ import json
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import asyncio
+from dotenv import load_dotenv, dotenv_values 
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
 db_config = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': '',
-    'database': 'moodle',
+    'host': os.getenv("hostname"),
+    'user': os.getenv("db_username"),
+    'password': os.getenv("password"),
+    'database': os.getenv("database"),
+}
+
+db_config_source = {
+    'host': os.getenv("hostname_source"),
+    'user': os.getenv("db_username_source"),
+    'password': os.getenv("password_source"),
+    'database': os.getenv("database_source"),
 }
 
 # db_config = {
@@ -69,10 +79,25 @@ data_summary = [
     }
 ]
 
+class peserta:
+  def __init__(self, firstname, lastname, userid, timestart, timefinish, score, session, shift):
+    self.firstname = firstname
+    self.lastname = lastname
+    self.userid = userid
+    self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
+    self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
+    self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
+    self.timestart_unix = timestart
+    self.score = score
+    self.session = session
+    self.status = 1
+    self.track_progress = "secure"
+    self.shift = shift
+
 proctor_id = []
 
 # Telegram bot setup
-TOKEN = '6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI'
+TOKEN = os.getenv("token")
 
 async def start(update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
@@ -174,7 +199,6 @@ async def hapusproktor(update: Update, context: CallbackContext) -> None:
 
 def getproctorforresult():
     try:
-        connection = None
         connection = mysql.connector.connect(**db_config)
     
         if connection.is_connected():
@@ -212,20 +236,6 @@ def getproctorforresult():
 
 #     # Run the bot using the newly created event loop
 #     loop.run_until_complete(application.run_polling())
-
-class peserta:
-  def __init__(self, firstname, lastname, userid, timestart, timefinish, score, session, shift):
-    self.firstname = firstname
-    self.lastname = lastname
-    self.userid = userid
-    self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
-    self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
-    self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
-    self.score = score
-    self.session = session
-    self.status = 1
-    self.track_progress = "secure"
-    self.shift = shift
 
 def get_time_shift():
     # Define Indonesian month names
@@ -272,31 +282,52 @@ def get_shift(time):
     return shift
 
 def get_data(formatted_date, shift):
-    download_dir = 'downloaded_files'
-    username = 'serverlog'
-    password = 'S3rverl0g!'
+    # download_dir = 'downloaded_files'
+    # username = os.getenv("sb_username")
+    # password = os.getenv("sb_passwd")
 
-    # Create the download directory if it doesn't exist
-    os.makedirs(download_dir, exist_ok=True)
+    # # Create the download directory if it doesn't exist
+    # os.makedirs(download_dir, exist_ok=True)
 
     # time = formatted_date
     # current_shift = shift
-    time = '01 April 2024'
-    current_shift = 'Shift 1'
+    # time = '01 April 2024'
+    # current_shift = 'Shift 1'
 
-    # Assuming 'time' and 'current_shift' are already defined
-    encoded_time = urllib.parse.quote(time)
-    encoded_shift = urllib.parse.quote(current_shift)
+    # # Assuming 'time' and 'current_shift' are already defined
+    # encoded_time = urllib.parse.quote(time)
+    # encoded_shift = urllib.parse.quote(current_shift)
 
-    url = f"https://sandbox.telkomuniversity.ac.id/laclog/lac-eprt-log/Quiz%20Attempts/{encoded_time}/{encoded_shift}/"
-    command = f'!wget --user=serverlog --password=S3rverl0g! -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
+    # url = f'{os.getenv("sb_url")}{encoded_time}/{encoded_shift}/'
+    # command = f'!wget --user={os.getenv("sb_username")} --password={os.getenv("sb_passwd")} -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
 
     # delete_files_in_directory(download_dir)
     # download_folder_with_auth(url, download_dir, username, password)
+    
+    conn = mysql.connector.connect(**db_config_source)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """ 
+            SELECT id, firstname, lastname, quiz_name, uniqueid, timestart, timefinish, score FROM db_name;
+            """)
+        rows = cursor.fetchall()
+        columns = [column[0] for column in cursor.description]
+
+        return rows, columns
+    
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+            print("MySQL connection is closed")
 
 def create_dataframe():
-    data_dir = 'downloaded_files'
-    list_file = glob.glob(data_dir)
+    # data_dir = 'downloaded_files'
+    # list_file = glob.glob(data_dir)
 
     # if len(list_file) == 1:
     #     data = 'downloaded_files/Listening.xlsx'
@@ -308,10 +339,20 @@ def create_dataframe():
     #     data = 'downloaded_files/Reading.xlsx'
     #     session = 'reading'
 
-    data = 'downloaded_files/Grammar.xlsx'
-    session = 'grammar'
+    # data = 'downloaded_files/Grammar.xlsx'
+    # session = 'grammar'
 
-    df_data = pd.read_excel(data, header=0)
+    data, columns = get_data()
+
+    for row in data:
+        if "listening".lower() in row[3].lower():
+            session = "listening"
+        elif "grammar".lower() in row[3].lower():
+            session = "grammar"
+        elif "reading".lower() in row[3].lower():
+            session = "reading"
+
+    df_data = pd.DataFrame(data, columns=columns)
 
     return session, df_data
 
@@ -332,15 +373,14 @@ def getPeserta(df_data, session):
     df_data['diff_time'] = df_data['timefinish'] - df_data['timestart']
     df_data['diff_time_minute'] = df_data['diff_time'].dt.total_seconds() / 60
 
-
 def add_value(row):
-    if row['quiz_name'] == "Grammar":
+    if "Grammar".lower() in row['quiz_name'].lower():
         grammar_diff_time_minute = row['diff_time_minute']
         return grammar_diff_time_minute / 25
-    elif row['quiz_name'] == "Reading":
+    elif "Reading".lower() in row['quiz_name'].lower():
         reading_diff_time_minute = row['diff_time_minute']
         return reading_diff_time_minute / 55
-    elif row['quiz_name'] == "Listening":
+    elif "Listening".lower() in row['quiz_name'].lower():
         listening_diff_time_minute = row['diff_time_minute']
         return listening_diff_time_minute / 35
     
@@ -402,7 +442,8 @@ def add_pred_value(df_data, session):
         if p.userid == row['id']:
             p.status = row['anomaly_score_iso']
             if p.status == -1:
-                if session == 'listening' or session == 'reading':
+                # if session == 'listening' or session == 'reading':
+                if session == 'reading':
                     nilai_max = 50
                 elif session == 'grammar':
                     nilai_max = 40
@@ -538,6 +579,101 @@ def fetchCasesfromSQL():
             cursor.close()
             connection.close()
             print("MySQL connection is closed")
+
+def insertHistoryToSQL(p):
+    timedate = datetime.fromtimestamp(p.timestart_unix, pytz.timezone('Asia/Jakarta')).strftime('%y-%m-%d %H:%M:%S')
+    timestart = datetime.fromtimestamp(p.timestart_unix, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
+
+    try:
+        connection = mysql.connector.connect(**db_config)
+    
+        if connection.is_connected():
+            cursor = connection.cursor()
+            insert_query = """INSERT INTO peserta_history 
+            (firstname, lastname, userid, timedate, timestart, timefinish, timetaken, score, _session, _status, shift)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+            params = (p.firstname, p.lastname, p.userid, timedate,
+                           timestart, p.timefinish, p.timetaken, p.score, p.session, p. status, p.shift)
+            cursor.execute(insert_query, params)
+            connection.commit()
+            print("Record inserted successfully into your_table")
+
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+
+def fetchHistoryfromSQL(param=None):
+    try:
+        connection = mysql.connector.connect(**db_config)
+    
+        if connection.is_connected():
+            cursor = connection.cursor()
+
+            if param is None or param == "":
+                query = "SELECT * FROM peserta_history"
+
+                cursor.execute(query)
+            else:
+                param = urllib.parse.unquote(param)
+                param = param.replace('"', '')
+                name_parts = param.split()
+                if len(name_parts) == 1:
+                    query = 'SELECT * FROM peserta_history WHERE firstname LIKE %s OR lastname LIKE %s'
+                    args = [f'%{name_parts[0]}%', f'%{name_parts[0]}%']
+
+                else:
+                    firstname = name_parts[0]
+                    lastname_parts = name_parts[1:]
+                    
+                    # Construct the query to handle both possible cases
+                    query = 'SELECT * FROM peserta_history WHERE (firstname LIKE %s AND lastname LIKE %s)'
+                    args = [f'%{firstname}%', '']
+                    
+                    for part in lastname_parts:
+                        query += ' OR (firstname LIKE %s AND lastname LIKE %s)'
+                        args += [f'%{part}%', f'%{part}%']
+
+                    # Additional case to match if the parts are swapped
+                    if lastname_parts:
+                        query += ' OR (firstname LIKE %s AND lastname LIKE %s)'
+                        args += [f'%{lastname_parts[0]}%', f'%{firstname}%']
+    
+            cursor.execute(query, args)
+            rows = cursor.fetchall()
+
+            json_data_history_list = []
+
+            for row in rows:
+                timedate =  row[4].strftime('%Y-%m-%d %H:%M:%S')
+                timestart = format_timedelta(row[5])
+                timefinish =format_timedelta(row[6])
+                timetaken = format_timedelta(row[7])
+
+                data = {'userid' :row[3], 'firstname': row[1], 'lastname': row[2], 'timedate': timedate,
+                'timestart' : timestart, 'timefinish' : timefinish, 'time_taken' : timetaken, 
+                'score' : row[8], 'status' : row[10], 'session': row[9], 'shift' : row[11]}
+
+                json_data_history_list.append(data)
+
+            return json_data_history_list
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+
+def format_timedelta(td):
+    seconds = td.seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 def clearPeserta(daftar_peserta):
     daftar_peserta.clear()
@@ -687,6 +823,9 @@ def post_peserta():
                 'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
                 'score' : p.score, 'status' : p.status, 'session': p.session, 'track_progress': p.track_progress,
                 'shift' : p.shift}
+        
+        insertHistoryToSQL(p)
+
         if p.status == "terindikasi":
             list_curang.append(data)
         list_data.append(data)
@@ -699,6 +838,13 @@ def post_peserta():
     asyncio.run(send_message_to_all(proctor_id, message))
     
     return jsonify(list_data)
+
+@app.route('/peserta_history', methods=['GET'])
+def getPesertaHistory():
+    query = request.args.get('query', '').lower()
+    data_history = fetchHistoryfromSQL(query)
+
+    return jsonify(data_history)
 
 @app.route('/get_summary', methods=['GET'])
 def getSummary():
@@ -774,17 +920,17 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot's polling in the main thread
-    # application.run_polling()
+    application.run_polling(poll_interval=0.5)
 
     # Replace with your actual URL
-    webhook_url = "https://180.250.135.11:8443/6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI"
+    # webhook_url = f"https://180.250.135.11:8443/{TOKEN}"
 
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=8443,
-        url_path="6992700934:AAHd1u6WZ5kSJtzL25xBONb1rHK1bbeT4DI",
-        webhook_url=webhook_url,
-    )
+    # application.run_webhook(
+    #     listen="0.0.0.0",
+    #     port=8443,
+    #     url_path=TOKEN,
+    #     webhook_url=webhook_url,
+    # )
 
     # Wait for the Flask thread to complete (this will not actually happen in normal execution)
     flask_thread.join()

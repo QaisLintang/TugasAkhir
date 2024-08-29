@@ -9,7 +9,6 @@ db_config = {
 }
 
 # Connect to the MySQL database
-print("connecting...")
 conn = mysql.connector.connect(**db_config)
 
 # Create a cursor object to interact with the database
