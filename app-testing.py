@@ -1,7 +1,7 @@
 # app.py (Flask program)
 
 from flask import Flask, render_template, jsonify, request
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import urllib.parse
 import pytz
@@ -308,10 +308,37 @@ def get_data(formatted_date, shift):
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            """ 
-            SELECT id, firstname, lastname, quiz_name, uniqueid, timestart, timefinish, score FROM db_name;
-            """)
+        # Get the current date and time
+        current_time = datetime.now()
+
+        # Define the test times (7 AM, 11 AM, 2 PM) as UNIX timestamps
+        test_times = [
+            datetime.combine(current_time.date(), datetime.min.time()) + timedelta(hours=7),
+            datetime.combine(current_time.date(), datetime.min.time()) + timedelta(hours=11),
+            datetime.combine(current_time.date(), datetime.min.time()) + timedelta(hours=14)
+        ]
+
+        # Convert test times to UNIX format
+        test_times_unix = [int(time.timestamp()) for time in test_times]
+
+        # Determine which test data to retrieve based on the current time
+        if current_time < test_times[1]:
+            selected_test_time = test_times_unix[0]
+        elif current_time < test_times[2]:
+            selected_test_time = test_times_unix[1]
+        else:
+            selected_test_time = test_times_unix[2]
+
+        query = """ 
+            SELECT id, firstname, lastname, quiz_name, uniqueid, timestart, timefinish, score 
+            FROM db_name
+            WHERE timestart >= %s timestart < %s;
+            """
+
+        next_test_time = selected_test_time + 4 * 60 * 60  # Add 4 hours to cover the entire time range
+
+        cursor.execute(query, (selected_test_time, next_test_time))
+
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
 
