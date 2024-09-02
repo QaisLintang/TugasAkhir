@@ -282,28 +282,29 @@ def get_shift(time):
     return shift
 
 def get_data(formatted_date, shift):
-    # download_dir = 'downloaded_files'
-    # username = os.getenv("sb_username")
-    # password = os.getenv("sb_passwd")
+    download_dir = 'downloaded_files'
+    username = os.getenv("sb_username")
+    password = os.getenv("sb_passwd")
 
-    # # Create the download directory if it doesn't exist
-    # os.makedirs(download_dir, exist_ok=True)
+    # Create the download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
 
-    # time = formatted_date
-    # current_shift = shift
-    # time = '01 April 2024'
-    # current_shift = 'Shift 1'
+    time = formatted_date
+    current_shift = shift
+    time = '01 April 2024'
+    current_shift = 'Shift 1'
 
-    # # Assuming 'time' and 'current_shift' are already defined
-    # encoded_time = urllib.parse.quote(time)
-    # encoded_shift = urllib.parse.quote(current_shift)
+    # Assuming 'time' and 'current_shift' are already defined
+    encoded_time = urllib.parse.quote(time)
+    encoded_shift = urllib.parse.quote(current_shift)
 
-    # url = f'{os.getenv("sb_url")}{encoded_time}/{encoded_shift}/'
-    # command = f'!wget --user={os.getenv("sb_username")} --password={os.getenv("sb_passwd")} -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
+    url = f'{os.getenv("sb_url")}{encoded_time}/{encoded_shift}/'
+    command = f'!wget --user={os.getenv("sb_username")} --password={os.getenv("sb_passwd")} -r -np -nH --cut-dirs=3 -R "index.html*" {url}'
 
     # delete_files_in_directory(download_dir)
     # download_folder_with_auth(url, download_dir, username, password)
-    
+
+def get_sql_data():
     conn = mysql.connector.connect(**db_config_source)
     cursor = conn.cursor()
 
@@ -330,17 +331,23 @@ def get_data(formatted_date, shift):
             selected_test_time = test_times_unix[2]
 
         query = """ 
-            SELECT id, firstname, lastname, quiz_name, uniqueid, timestart, timefinish, score 
-            FROM db_name
-            WHERE timestart >= %s timestart < %s;
+            SELECT id_peserta, firstname, lastname, quiz_name, unique_id, timestart, timefinish, score 
+            FROM backup_attempt
+            WHERE timestart >= %s AND timestart < %s;
             """
 
+        selected_test_time = 1724842800
+
         next_test_time = selected_test_time + 4 * 60 * 60  # Add 4 hours to cover the entire time range
+
+        # cursor.execute("SELECT * FROM backup_attempt")
 
         cursor.execute(query, (selected_test_time, next_test_time))
 
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
+
+        print(rows)
 
         return rows, columns
     
@@ -351,6 +358,7 @@ def get_data(formatted_date, shift):
             cursor.close()
             conn.close()
             print("MySQL connection is closed")
+    
 
 def create_dataframe():
     # data_dir = 'downloaded_files'
@@ -369,7 +377,7 @@ def create_dataframe():
     # data = 'downloaded_files/Grammar.xlsx'
     # session = 'grammar'
 
-    data, columns = get_data()
+    data, columns = get_sql_data()
 
     for row in data:
         if "listening".lower() in row[3].lower():
@@ -387,8 +395,8 @@ def getPeserta(df_data, session):
 
     for index, row in df_data.iterrows():
         # Check if the userid is already in daftar_peserta
-        if not any(p.userid == row['id'] for p in daftar_peserta):
-            newPeserta = peserta(row['firstname'], row['lastname'], row['id'], row['timestart'], 
+        if not any(p.userid == row['id_peserta'] for p in daftar_peserta):
+            newPeserta = peserta(row['firstname'], row['lastname'], row['id_peserta'], row['timestart'], 
                                  row['timefinish'], row['score'], session, get_shift(row['timestart']))
             daftar_peserta.append(newPeserta)
 
@@ -466,7 +474,7 @@ def predict(df_data, session):
 def add_pred_value(df_data, session):
    for index, row in df_data.iterrows():
     for p in daftar_peserta:
-        if p.userid == row['id']:
+        if p.userid == row['id_peserta']:
             p.status = row['anomaly_score_iso']
             if p.status == -1:
                 # if session == 'listening' or session == 'reading':
@@ -821,7 +829,11 @@ def show_usernames():
 
     message_footer = "\n\nPeserta berikut terindikasi melakukan kecurangan!"
     message_daftar_curang = '\n'.join([' '.join(sublist) for sublist in message_list])
-    message = message_daftar_curang + message_footer
+
+    if message_daftar_curang == None or message_daftar_curang == '':
+        message = "Sesi ini aman"
+    else:
+        message = message_daftar_curang + message_footer
     
     # Run the asynchronous function
     asyncio.run(send_message_to_all(getproctorforresult(), message))
