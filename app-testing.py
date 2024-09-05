@@ -114,7 +114,7 @@ async def echo(update: Update, context: CallbackContext) -> None:
 
 async def getproctors(update: Update, context: CallbackContext) -> None:
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
     
         if connection.is_connected():
             cursor = connection.cursor()
@@ -151,7 +151,7 @@ async def send_message_to_all(chat_ids, message):
 
 async def daftar(update: Update, context: CallbackContext) -> None:
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
         chat_id = update.effective_chat.id
     
         if connection.is_connected():
@@ -175,7 +175,7 @@ async def daftar(update: Update, context: CallbackContext) -> None:
 
 async def hapusproktor(update: Update, context: CallbackContext) -> None:
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
         chat_id = update.effective_chat.id
     
         if connection.is_connected():
@@ -199,8 +199,9 @@ async def hapusproktor(update: Update, context: CallbackContext) -> None:
 
 def getproctorforresult():
     try:
-        connection = mysql.connector.connect(**db_config)
-    
+        connection = mysql.connector.connect(**db_config_source)
+        cursor = connection.cursor()
+
         if connection.is_connected():
             cursor = connection.cursor()
             query = "SELECT chat_id FROM daftar_proktor"
@@ -336,7 +337,7 @@ def get_sql_data():
             WHERE timestart >= %s AND timestart < %s;
             """
 
-        selected_test_time = 1724842800
+        # selected_test_time = 1724842800
 
         next_test_time = selected_test_time + 4 * 60 * 60  # Add 4 hours to cover the entire time range
 
