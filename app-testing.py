@@ -21,7 +21,10 @@ import json
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import asyncio
-from dotenv import load_dotenv, dotenv_values 
+from dotenv import load_dotenv, dotenv_values
+from telegram.error import TelegramError, NetworkError
+from hypercorn.asyncio import serve
+from hypercorn.config import Config
 
 load_dotenv()
 
@@ -226,6 +229,28 @@ def getproctorforresult():
             connection.close()
             print("MySQL connection is closed")
 
+def returnCheaterList():
+    list_curang = []
+    message_list =[]
+    for p in daftar_peserta:
+        if p.status == "terindikasi":
+            list_curang.append(p)
+    
+    for individu in list_curang:
+        temp_list = [individu.firstname, individu.lastname]
+        message_list.append(temp_list)
+
+    message_footer = "\n\nPeserta berikut terindikasi melakukan kecurangan!"
+    message_daftar_curang = '\n'.join([' '.join(sublist) for sublist in message_list])
+
+    if message_daftar_curang == None or message_daftar_curang == '':
+        message = "Sesi ini aman"
+    else:
+        message = message_daftar_curang + message_footer
+    
+    # Run the asynchronous function
+    asyncio.run(send_message_to_all(getproctorforresult(), message))
+
 # def run_bot():
 #     # Create a new event loop for this thread
 #     asyncio.set_event_loop(asyncio.new_event_loop())
@@ -341,9 +366,10 @@ def get_sql_data():
 
         next_test_time = selected_test_time + 4 * 60 * 60  # Add 4 hours to cover the entire time range
 
-        # cursor.execute("SELECT * FROM backup_attempt")
+        cursor.execute("""SELECT id_peserta, firstname, lastname, quiz_name, unique_id, 
+                       timestart, timefinish, score FROM backup_attempt WHERE quiz_name='Listening Pre-Exam'""")
 
-        cursor.execute(query, (selected_test_time, next_test_time))
+        # cursor.execute(query, (selected_test_time, next_test_time))
 
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
@@ -379,6 +405,7 @@ def create_dataframe():
     # session = 'grammar'
 
     data, columns = get_sql_data()
+    session = None
 
     for row in data:
         if "listening".lower() in row[3].lower():
@@ -396,10 +423,10 @@ def getPeserta(df_data, session):
 
     for index, row in df_data.iterrows():
         # Check if the userid is already in daftar_peserta
-        if not any(p.userid == row['id_peserta'] for p in daftar_peserta):
-            newPeserta = peserta(row['firstname'], row['lastname'], row['id_peserta'], row['timestart'], 
-                                 row['timefinish'], row['score'], session, get_shift(row['timestart']))
-            daftar_peserta.append(newPeserta)
+        # if not any(p.userid == row['id_peserta'] for p in daftar_peserta):
+        newPeserta = peserta(row['firstname'], row['lastname'], row['id_peserta'], row['timestart'], 
+                                row['timefinish'], row['score'], session, get_shift(row['timestart']))
+        daftar_peserta.append(newPeserta)
 
     # Convert 'timestart' and 'timefinish' to datetime if needed
     df_data['timestart'] = pd.to_datetime(df_data['timestart'])
@@ -483,10 +510,48 @@ def add_pred_value(df_data, session):
                     nilai_max = 50
                 elif session == 'grammar':
                     nilai_max = 40
+                elif session == 'listening':
+                    nilai_max = 1
                 converted_nilai = (p.score / nilai_max) * 100
                 if converted_nilai < 40:
                     p.status = 1
 
+def doConcurrentPredict(df_data, session):
+    batch_analysis_res = []
+    final_res = []
+
+    for i in range(5):
+        predict(df_data, session)
+        if i < 4:
+            temp_df = df_data
+            kumpulan_predict.append(temp_df)
+            temp_df = None
+        else:
+            final_df = df_data
+    
+    for pred in kumpulan_predict:
+        analysis_res = []
+        for index, row in pred.iterrows():
+            analysis_res.append(row['anomaly_score_iso'])
+        batch_analysis_res.append(analysis_res)
+
+    for sec_iterate in range(len(batch_analysis_res[0])):
+        cheating_sum, honest_sum = 0, 0
+
+        for iterate in range(len(batch_analysis_res)):
+
+            if batch_analysis_res[iterate][sec_iterate] == 1:
+                honest_sum += 1
+            else:
+                cheating_sum += 1
+
+        if honest_sum > cheating_sum:
+            final_res.append(1)
+        else:
+            final_res.append(0)
+    
+    for index, row in df_data.iterrows():
+        row['anomaly_score_iso'] = final_res[index]
 
 def getCaseCounts(daftar_peserta):
     cases, cheat, good = 0, 0, 0
@@ -767,6 +832,9 @@ def start_background_task():
 
 def run_flask():
     app.run(host="0.0.0.0", port=8443, debug=True, use_reloader=False)
+    # config = Config()
+    # config.bind = ["localhost:8443"]
+    # await serve(app, config)
 
 # Route to display usernames and IP addresses
 @app.route('/')
@@ -776,68 +844,14 @@ def show_usernames():
     get_data(waktu, shift)
     session, df_data = create_dataframe()
     getPeserta(df_data, session)
-    predict(df_data, session)
-
-    batch_analysis_res = []
-    final_res = []
-
-    for i in range(5):
-        predict(df_data, session)
-        if i < 4:
-            temp_df = df_data
-            kumpulan_predict.append(temp_df)
-            temp_df = None
-        else:
-            final_df = df_data
     
-    for pred in kumpulan_predict:
-        analysis_res = []
-        for index, row in pred.iterrows():
-            analysis_res.append(row['anomaly_score_iso'])
-        batch_analysis_res.append(analysis_res)
-
-    for sec_iterate in range(len(batch_analysis_res[0])):
-        cheating_sum, honest_sum = 0, 0
-
-        for iterate in range(len(batch_analysis_res)):
-
-            if batch_analysis_res[iterate][sec_iterate] == 1:
-                honest_sum += 1
-            else:
-                cheating_sum += 1
-
-        if honest_sum > cheating_sum:
-            final_res.append(1)
-        else:
-            final_res.append(0)
-    
-    for index, row in df_data.iterrows():
-        row['anomaly_score_iso'] = final_res[index]
-
+    # predict(df_data, session)
+    doConcurrentPredict(df_data, session)            
                 
     add_pred_value(df_data, session)
     renameStatusAndTrack(daftar_peserta)
 
-    list_curang = []
-    message_list =[]
-    for p in daftar_peserta:
-        if p.status == "terindikasi":
-            list_curang.append(p)
-    
-    for individu in list_curang:
-        temp_list = [individu.firstname, individu.lastname]
-        message_list.append(temp_list)
-
-    message_footer = "\n\nPeserta berikut terindikasi melakukan kecurangan!"
-    message_daftar_curang = '\n'.join([' '.join(sublist) for sublist in message_list])
-
-    if message_daftar_curang == None or message_daftar_curang == '':
-        message = "Sesi ini aman"
-    else:
-        message = message_daftar_curang + message_footer
-    
-    # Run the asynchronous function
-    asyncio.run(send_message_to_all(getproctorforresult(), message))
+    returnCheaterList()
 
     return render_template('usernames_test.html', user_data=daftar_peserta)
 
@@ -932,6 +946,12 @@ def show_detail_peserta():
     
     return jsonify(list_data)
 
+@app.route('/dump', methods=['POST'])
+def dump():
+    os.system('./bash/export-sql.sh')
+
+    return ("berhasil")
+
 # Route to user peserta
 # @app.route('/clients')
 # def show_peserta():
@@ -960,7 +980,7 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot's polling in the main thread
-    application.run_polling(poll_interval=0.5)
+    asyncio.run(application.run_polling())
 
     # Replace with your actual URL
     # webhook_url = f"https://180.250.135.11:8443/{TOKEN}"
