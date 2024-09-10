@@ -652,7 +652,7 @@ def insertCasesToSQL(list_curang):
     data_json_str = json.dumps(data_json)
     
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
     
         if connection.is_connected():
             cursor = connection.cursor()
@@ -671,7 +671,7 @@ def insertCasesToSQL(list_curang):
     
 def fetchCasesfromSQL():
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
     
         if connection.is_connected():
             cursor = connection.cursor()
@@ -707,7 +707,7 @@ def insertHistoryToSQL(p):
     timestart = datetime.fromtimestamp(p.timestart_unix, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
 
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
     
         if connection.is_connected():
             cursor = connection.cursor()
@@ -730,7 +730,7 @@ def insertHistoryToSQL(p):
 
 def fetchHistoryfromSQL(param=None):
     try:
-        connection = mysql.connector.connect(**db_config)
+        connection = mysql.connector.connect(**db_config_source)
     
         if connection.is_connected():
             cursor = connection.cursor()
