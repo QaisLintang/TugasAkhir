@@ -19,12 +19,15 @@ import mysql.connector
 from mysql.connector import Error
 import json
 from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import CommandHandler, MessageHandler, filters, CallbackContext, ApplicationBuilder, Application
 import asyncio
 from dotenv import load_dotenv, dotenv_values
 from telegram.error import TelegramError, NetworkError
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
+import joblib
+import signal
+import sys
 
 load_dotenv()
 
@@ -52,7 +55,6 @@ db_config_source = {
 #     'database': 'log_analyzer_db',
 # }
 
-model = 'models\iso_forest.joblib'
 daftar_peserta = []
 kumpulan_predict = []
 output_queue = Queue()
@@ -82,6 +84,15 @@ data_summary = [
     }
 ]
 
+dynamic_settings = {
+    "listening_timetaken" : 0,
+    "listening_minscore" : 0,
+    "grammar_timetaken" : 0,
+    "grammar_minscore" : 0,
+    "reading_timetaken" : 0,
+    "reading_minscore" : 0
+}
+
 class peserta:
   def __init__(self, firstname, lastname, userid, timestart, timefinish, score, session, shift):
     self.firstname = firstname
@@ -90,6 +101,7 @@ class peserta:
     self.timestart = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timefinish = datetime.fromtimestamp(timefinish, pytz.timezone('Asia/Jakarta')).strftime('%H:%M:%S')
     self.timetaken = datetime.fromtimestamp(timefinish - timestart, pytz.timezone('UTC')).strftime('%H:%M:%S')
+    self.timedate = datetime.fromtimestamp(timestart, pytz.timezone('Asia/Jakarta'))
     self.timestart_unix = timestart
     self.score = score
     self.session = session
@@ -101,16 +113,18 @@ proctor_id = []
 
 # Telegram bot setup
 TOKEN = os.getenv("token")
+# application = None
 
-async def start(update: Update, context: CallbackContext) -> None:
-    chat_id = update.effective_chat.id
-    if len(proctor_id) == 0:
-        proctor_id.append(chat_id)
-    else:
-        for id in proctor_id:
-            if id != chat_id:
-                proctor_id.append(chat_id)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello! I'm your bot. How can I help you?")
+async def help(update: Update, context: CallbackContext) -> None:
+    text = """
+Selamat Datang di EPrT Log Analyzer, bot ini adalah bot notifikasi yang terintegrasi dengan log analyzer\n
+berikut perintah yang dapat digunakan:
+/help             - Menampilkan pesan ini
+/daftar           - Menambahkan anda sebagai penerima pesan notifikasi bot
+/daftarproktor    - Menampilkan proktor yang terdaftar sebagai penerima pesan notifikasi
+/hapusproktor     - Menghapus diri dari daftar penerima pesan notifikasi
+    """
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
 async def echo(update: Update, context: CallbackContext) -> None:
     await context.bot.send_message(chat_id=update.effective_chat.id, text=update.message.text)
@@ -229,7 +243,7 @@ def getproctorforresult():
             connection.close()
             print("MySQL connection is closed")
 
-def returnCheaterList():
+def returnCheaterList(session):
     list_curang = []
     message_list =[]
     for p in daftar_peserta:
@@ -240,28 +254,18 @@ def returnCheaterList():
         temp_list = [individu.firstname, individu.lastname]
         message_list.append(temp_list)
 
-    message_footer = "\n\nPeserta berikut terindikasi melakukan kecurangan!"
+    waktu = datetime.now(pytz.timezone('Asia/Jakarta')).strftime('%Y/%m/%d %H:%M:%S')
+
+    message_head = f"Tanggal {waktu}\n\n"
+    message_footer = f"\n\nPeserta berikut terindikasi melakukan kecurangan pada sesi {session}!"
     message_daftar_curang = '\n'.join([' '.join(sublist) for sublist in message_list])
 
     if message_daftar_curang == None or message_daftar_curang == '':
-        message = "Sesi ini aman"
+        pass
     else:
-        message = message_daftar_curang + message_footer
-    
-    # Run the asynchronous function
-    asyncio.run(send_message_to_all(getproctorforresult(), message))
-
-# def run_bot():
-#     # Create a new event loop for this thread
-#     asyncio.set_event_loop(asyncio.new_event_loop())
-#     loop = asyncio.get_event_loop()
-
-#     application = Application.builder().token(TOKEN).build()
-#     application.add_handler(CommandHandler('start', start))
-#     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-
-#     # Run the bot using the newly created event loop
-#     loop.run_until_complete(application.run_polling())
+        message = message_head + message_daftar_curang + message_footer
+        # Run the asynchronous function
+        asyncio.run(send_message_to_all(getproctorforresult(), message))
 
 def get_time_shift():
     # Define Indonesian month names
@@ -367,14 +371,12 @@ def get_sql_data():
         next_test_time = selected_test_time + 4 * 60 * 60  # Add 4 hours to cover the entire time range
 
         cursor.execute("""SELECT id_peserta, firstname, lastname, quiz_name, unique_id, 
-                       timestart, timefinish, score FROM backup_attempt WHERE quiz_name='Listening Pre-Exam'""")
+                       timestart, timefinish, score FROM backup_attempt WHERE quiz_name='Grammar Pre-Exam'""")
 
         # cursor.execute(query, (selected_test_time, next_test_time))
 
         rows = cursor.fetchall()
         columns = [column[0] for column in cursor.description]
-
-        print(rows)
 
         return rows, columns
     
@@ -404,18 +406,20 @@ def create_dataframe():
     # data = 'downloaded_files/Grammar.xlsx'
     # session = 'grammar'
 
-    data, columns = get_sql_data()
+    # data, columns = get_sql_data()
     session = None
 
-    for row in data:
-        if "listening".lower() in row[3].lower():
-            session = "listening"
-        elif "grammar".lower() in row[3].lower():
-            session = "grammar"
-        elif "reading".lower() in row[3].lower():
-            session = "reading"
+    # for row in data:
+    #     if "listening".lower() in row[3].lower():
+    #         session = "listening"
+    #     elif "grammar".lower() in row[3].lower():
+    #         session = "grammar"
+    #     elif "reading".lower() in row[3].lower():
+    #         session = "reading"
 
-    df_data = pd.DataFrame(data, columns=columns)
+    session = "grammar"
+    # df_data = pd.DataFrame(data, columns=columns)
+    df_data = pd.read_excel('downloaded_files\Grammar.xlsx')
 
     return session, df_data
 
@@ -462,7 +466,7 @@ def predict(df_data, session):
     features = df_data[['listening_diff_time_minute', 'listening_completion_ratio', 'listening_score']]
 
     # Fitting the Isolation Forest
-    iso_forest_listening = IsolationForest(contamination=0.1)
+    iso_forest_listening = joblib.load('models\Listening_iso_forest_model.pkl')
     df_data['anomaly_score_iso'] = iso_forest_listening.fit_predict(features)
 
   elif session == 'reading':
@@ -479,7 +483,7 @@ def predict(df_data, session):
     features = df_data[['reading_diff_time_minute', 'reading_completion_ratio', 'reading_score']]
 
     # Fitting the Isolation Forest
-    iso_forest_reading = IsolationForest(contamination=0.1)
+    iso_forest_reading = joblib.load('models\Reading_iso_forest_model.pkl')
     df_data['anomaly_score_iso'] = iso_forest_reading.fit_predict(features)
 
   elif session == 'grammar':
@@ -496,7 +500,7 @@ def predict(df_data, session):
     features = df_data[['grammar_diff_time_minute', 'grammar_completion_ratio', 'grammar_score']]
 
     # Fitting the Isolation Forest
-    iso_forest_grammar = IsolationForest(contamination=0.2)
+    iso_forest_grammar = joblib.load('models\Grammar_iso_forest_model.pkl')
     df_data['anomaly_score_iso'] = iso_forest_grammar.fit_predict(features)
 
 def add_pred_value(df_data, session):
@@ -504,17 +508,34 @@ def add_pred_value(df_data, session):
     for p in daftar_peserta:
         if p.userid == row['id_peserta']:
             p.status = row['anomaly_score_iso']
-            if p.status == -1:
+            # if p.status == -1:
                 # if session == 'listening' or session == 'reading':
-                if session == 'reading':
-                    nilai_max = 50
-                elif session == 'grammar':
-                    nilai_max = 40
-                elif session == 'listening':
-                    nilai_max = 1
-                converted_nilai = (p.score / nilai_max) * 100
-                if converted_nilai < 40:
-                    p.status = 1
+            if session == 'reading':
+                nilai_max = 50
+                treshold_nilai = dynamic_settings['reading_minscore']
+                treshold_time = dynamic_settings['reading_timetaken']
+            elif session == 'grammar':
+                nilai_max = 40
+                treshold_nilai = dynamic_settings['grammar_minscore']
+                treshold_time = dynamic_settings['grammar_timetaken']
+            elif session == 'listening':
+                nilai_max = 1
+                treshold_nilai = dynamic_settings['listening_minscore']
+                treshold_time = dynamic_settings['grammar_timetaken']
+
+            converted_nilai = (p.score / nilai_max) * 100
+            converted_treshold = (treshold_nilai / nilai_max) * 100
+            if converted_nilai < 40:
+                p.status = 1
+            
+            time_str = p.timetaken
+            hours, minutes, seconds = map(int, time_str.split(':'))
+            duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+            total_seconds = duration.total_seconds()
+
+            if total_seconds < treshold_time:
+                if p.score > converted_treshold:
+                    p.status = -1
 
 def doConcurrentPredict(df_data, session):
     batch_analysis_res = []
@@ -836,6 +857,109 @@ def run_flask():
     # config.bind = ["localhost:8443"]
     # await serve(app, config)
 
+async def run_bot():
+    # Start the bot
+    global application
+
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    await application.initialize()
+
+    application.add_handler(CommandHandler('help', help))
+    application.add_handler(CommandHandler('daftarproctor', getproctors))
+    application.add_handler(CommandHandler('daftar', daftar))
+    application.add_handler(CommandHandler('hapusproctor', hapusproktor))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    # Start the bot
+    await application.start()
+    await application.updater.start_polling()
+
+    # Keep the bot running until manually stopped
+    await application.stop()
+
+# Function to handle graceful shutdown
+def shutdown(signum, frame):
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop), return_exceptions=True))
+    sys.exit(0)
+
+def flask_thread():
+    # Start Flask in a separate thread
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+def shutdown_flask():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+def signal_handler(signal, frame):
+    print("\nCtrl+C received! Shutting down gracefully...")
+    
+    # Shutdown Flask
+    shutdown_flask()
+    
+    # Cancel asyncio loop
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
+
+def main():
+    # Set up signal handling for graceful shutdown
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+     # Start Flask in a new thread
+    # flask_thread = threading.Thread(target=run_flask)
+    # flask_thread.start()
+    
+    # asyncio.run(run_bot())
+    
+    # Run the Telegram bot using asyncio
+    # loop = asyncio.get_event_loop()
+    # try:
+    #     # Create and start the bot task
+    #     bot_task = loop.create_task(run_bot())
+    #     loop.run_forever()
+    # except KeyboardInterrupt:
+    #     # Gracefully stop the event loop
+    #     loop.stop()
+    #     bot_task.cancel()
+    #     loop.run_until_complete(bot_task)
+    #     loop.close()
+
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    # Telegram bot must run in the main thread to handle signals properly
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler('help', help))
+    application.add_handler(CommandHandler('getproctor', getproctors))
+    application.add_handler(CommandHandler('daftar', daftar))
+    application.add_handler(CommandHandler('hapusproktor', hapusproktor))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    # Run the bot's polling in the main thread
+    asyncio.run(application.run_polling())
+
+    # Replace with your actual URL
+    # webhook_url = f"https://180.250.135.11:8443/{TOKEN}"
+
+    # application.run_webhook(
+    #     listen="0.0.0.0",
+    #     port=8443,
+    #     url_path=TOKEN,
+    #     webhook_url=webhook_url,
+    # )
+
+    # Wait for the Flask thread to complete (this will not actually happen in normal execution)
+    flask_thread.join()
+        
 # Route to display usernames and IP addresses
 @app.route('/')
 def show_usernames():
@@ -851,7 +975,7 @@ def show_usernames():
     add_pred_value(df_data, session)
     renameStatusAndTrack(daftar_peserta)
 
-    returnCheaterList()
+    returnCheaterList(session)
 
     return render_template('usernames_test.html', user_data=daftar_peserta)
 
@@ -873,7 +997,7 @@ def post_peserta():
     list_data = []
     list_curang = []
     for p in daftar_peserta:
-        data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timestart ,
+        data = {'userid' : p.userid, 'firstname': p.firstname, 'lastname': p.lastname, 'timedate': p.timedate ,
                 'timestart' : p.timestart, 'timefinish' : p.timefinish, 'time_taken' : p.timetaken, 
                 'score' : p.score, 'status' : p.status, 'session': p.session, 'track_progress': p.track_progress,
                 'shift' : p.shift}
@@ -952,6 +1076,22 @@ def dump():
 
     return ("berhasil")
 
+@app.route('/backupfiles', methods=['GET'])
+def backupfiles():
+    
+    return ("kuru kuru")
+
+@app.route('/treshold-settings', methods=['POST'])
+def modifytreshold():
+    dynamic_settings['listening_timetaken'] = int(request.args.get("listening-timetaken")) * 60
+    dynamic_settings['listening_minscore'] = int(request.args.get("listening-minscore"))
+    dynamic_settings['grammar_timetaken'] = int(request.args.get("grammar-timetaken")) * 60
+    dynamic_settings['grammar_minscore'] = int(request.args.get("grammar-minscore"))
+    dynamic_settings['reading_timetaken'] = int(request.args.get("reading-timetaken")) * 60
+    dynamic_settings['reading_minscore'] = int(request.args.get("reading-minscore"))
+
+    return jsonify(dynamic_settings)
+
 # Route to user peserta
 # @app.route('/clients')
 # def show_peserta():
@@ -967,14 +1107,14 @@ def dump():
 #     return jsonify(datas)
 
 if __name__ == '__main__':
-    # Start the Flask app in a separate thread
+    # main()
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
 
     # Telegram bot must run in the main thread to handle signals properly
     application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('getproctor', getproctors))
+    application.add_handler(CommandHandler('help', help))
+    application.add_handler(CommandHandler('daftarproctor', getproctors))
     application.add_handler(CommandHandler('daftar', daftar))
     application.add_handler(CommandHandler('hapusproktor', hapusproktor))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
@@ -994,3 +1134,4 @@ if __name__ == '__main__':
 
     # Wait for the Flask thread to complete (this will not actually happen in normal execution)
     flask_thread.join()
+        
