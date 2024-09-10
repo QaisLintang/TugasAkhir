@@ -58,6 +58,7 @@ db_config_source = {
 daftar_peserta = []
 kumpulan_predict = []
 output_queue = Queue()
+BASE_DIR = "/home/linux/backup-sql"
 
 data_summary = [
     {
@@ -1091,6 +1092,37 @@ def modifytreshold():
     dynamic_settings['reading_minscore'] = int(request.args.get("reading-minscore"))
 
     return jsonify(dynamic_settings)
+
+@app.route('/directory', defaults={'subdir': ''})
+@app.route('/directory/<path:subdir>')
+def list_backups(subdir):
+    # Build the full path of the directory
+    full_path = os.path.join(BASE_DIR, subdir)
+    
+    # Check if the path exists and is a directory
+    if not os.path.exists(full_path) or not os.path.isdir(full_path):
+        return jsonify({"error": "Directory not found"}), 404
+    
+    # List the contents of the directory
+    files = []
+    for entry in os.listdir(full_path):
+        entry_path = os.path.join(full_path, entry)
+        if os.path.isfile(entry_path):
+            # For files, return the full path and title
+            files.append({
+                "title": entry,
+                "fullpath": os.path.join(full_path, entry),
+                "url": request.host_url + 'directory/' + subdir + '/' + entry
+            })
+        elif os.path.isdir(entry_path):
+            # For directories, allow recursion
+            files.append({
+                "title": entry + "/",
+                "fullpath": os.path.join(full_path, entry),
+                "url": request.host_url + 'directory/' + os.path.join(subdir, entry)
+            })
+    
+    return jsonify(files)
 
 # Route to user peserta
 # @app.route('/clients')
