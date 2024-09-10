@@ -406,20 +406,20 @@ def create_dataframe():
     # data = 'downloaded_files/Grammar.xlsx'
     # session = 'grammar'
 
-    # data, columns = get_sql_data()
-    session = None
+    data, columns = get_sql_data()
+    # session = None
 
-    # for row in data:
-    #     if "listening".lower() in row[3].lower():
-    #         session = "listening"
-    #     elif "grammar".lower() in row[3].lower():
-    #         session = "grammar"
-    #     elif "reading".lower() in row[3].lower():
-    #         session = "reading"
+    for row in data:
+        if "listening".lower() in row[3].lower():
+            session = "listening"
+        elif "grammar".lower() in row[3].lower():
+            session = "grammar"
+        elif "reading".lower() in row[3].lower():
+            session = "reading"
 
-    session = "grammar"
-    # df_data = pd.DataFrame(data, columns=columns)
-    df_data = pd.read_excel('downloaded_files\Grammar.xlsx')
+    # session = "grammar"
+    df_data = pd.DataFrame(data, columns=columns)
+    # df_data = pd.read_excel('downloaded_files\Grammar.xlsx')
 
     return session, df_data
 
