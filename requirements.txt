@@ -9,3 +9,5 @@ numpy
 flask_cors
 python-telegram-bot
 python-telegram-bot[webhook]
+hypercorn
+python-dotenv
